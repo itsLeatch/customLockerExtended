@@ -7,15 +7,13 @@
 class Display {
 private:
     Adafruit_SSD1306 display;
-    String headline;
-    String subline;
+    String text = "";
 
     int width;
     int height;
 public:
     Display(int width, int height, int resetPin) : display(width, height, &Wire, resetPin), width(width), height(height) {
-        headline = "";
-        subline = "";
+        
     }
 
     void begin() {
@@ -25,24 +23,21 @@ public:
         display.setTextColor(SSD1306_WHITE);
     }
 
-    void setHeadline(String text) {
-        headline = text;
-        updateDisplay();
-    }
-
-    void setSubline(String text) {
-        subline = text;
-        updateDisplay();
-    }
-
     void updateDisplay() {
         display.clearDisplay();
         display.setCursor(0, 0);
         display.setTextSize(2);
-        display.print(headline + "\n" + subline);
+        display.print(text);
         /*display.setCursor(0, height/2);
         display.setTextSize(1);
         display.print(subline);*/
         display.display();
     }
+
+    void setText(const String& inputText) {
+        text = inputText;
+        updateDisplay();
+    }
+
+
 };

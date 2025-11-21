@@ -16,10 +16,12 @@ class Button{
 private:
     unsigned int pin;
     void (*onPress) ();
+    void (*onLongPressStart) ();
     void (*onLongPress) (double timeSincePress);
 
     double pressStartedTime;
     bool isPressed = false;
+    bool longPressedFired = false;
     public:
     Button(unsigned int pin = 0, void (*onPress) () = {}, void (*onLongPress) (double timeSincePress) = {}) : pin(pin), onPress(onPress), onLongPress(onLongPress){
         pinMode(pin,INPUT_PULLUP);
@@ -38,9 +40,14 @@ private:
         onPress = callback;
     }
 
+    void setOnLongPressStart(void (*callback) ()){
+        onLongPressStart = callback;
+    }
+
     void setOnLongPress(void (*callback) (double)) {
         onLongPress = callback;
     }
+
 
     void update(){
           if(digitalRead(pin) == LOW){
@@ -51,6 +58,10 @@ private:
         }
         double timeSincePress = (millis () /1000.0) - pressStartedTime;
         if(timeSincePress >= LONGPRESSTIME){
+            if(longPressedFired == false){
+                onLongPressStart();
+                longPressedFired = true;
+            }
             onLongPress(timeSincePress - LONGPRESSTIME);
         }
 
@@ -58,6 +69,7 @@ private:
         //when released
         if(isPressed == true){
             isPressed = false;
+            longPressedFired = false;
             double timeSincePress = (millis () /1000.0) - pressStartedTime;
             //when the button was not long pressed
             if(timeSincePress < LONGPRESSTIME && timeSincePress > REBOUNCETIME){
