@@ -2,55 +2,38 @@
 #include <HX711_ADC.h>
 
 
- void dataReadyISR(void* driver)
-    {
-        ((HX711_ADC*)driver)->update();
-    }
-
-class LoadCell
+class LoadCell : public HX711_ADC
 {
-private:
-    HX711_ADC HX711_driver;
 
 public:
-LoadCell(const int &dataPin, const int &clockPin, const float &calibrationValue, const int &samples = 16) : HX711_driver(dataPin, clockPin)
+LoadCell(const int &dataPin, const int &clockPin, const float &calibrationValue, const int &samples = 16) : HX711_ADC(dataPin, clockPin)
     {
         Serial.begin(9600);
-        HX711_driver.begin();
-        HX711_driver.setSamplesInUse(samples);
+        begin();
+        setSamplesInUse(samples);
 
-        if (HX711_driver.getTareTimeoutFlag())
+        if (getTareTimeoutFlag())
         {
             Serial.println("Timeout, check MCU>HX711 wiring and pin designations");
             while (1);
         }
         else
         {
-            HX711_driver.setCalFactor(calibrationValue); // set calibration value (float)
+            setCalFactor(calibrationValue); // set calibration value (float)
             Serial.println("Startup is complete");
         }
 
-        attachInterruptArg(digitalPinToInterrupt(dataPin), dataReadyISR, &HX711_driver, FALLING);
     }
 
-    void start(const uint32_t &stabilizingTime = 2000){
-        HX711_driver.start(stabilizingTime, false);
-    }
-
-    void tare()
-    {
-        HX711_driver.tare();
-    }
-
-    void setCalibrationFactor(const float &calibrationValue)
+    void calibrateWithKnowMass(const float &knowMass)
     { 
-        HX711_driver.refreshDataSet();
-        HX711_driver.getNewCalibration(calibrationValue);
+        refreshDataSet();
+        getNewCalibration(knowMass);
     }
 
     float getData()
     {
-        HX711_driver.update();
-        return HX711_driver.getData();
+        update();
+        return HX711_ADC::getData();
     }
 };
