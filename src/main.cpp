@@ -1,15 +1,19 @@
 
 #include <Arduino.h>
+#include <EEPROM.h>
+
 #include "Buzzer.h"
 #include "Display.h"
 #include "Button.h"
 #include "openingMechanism.h"
 #include "ServoMotor.h"
+#include "loadCell.h"
 
 //Komponents
 Buzzer buzzer(5);
 Display display(128, 64, -1); 
 ServoMotor servoMotor(14);
+LoadCell loadCell(4,27,696.0);
 
 Button selectButton(18,[](){
 }, [](double timeSincePress){});
@@ -26,6 +30,8 @@ enum class Menues{opening, timeLocker, selectTime, timeLocked, calorinLocker, in
 bool isLocked;
 unsigned long timeSinceStartLocking;
 unsigned long minutesLocked = 1;
+unsigned long controllMassInGramm = 0;
+
 
 //screens
 
@@ -78,6 +84,9 @@ namespace selectTimeVariables{
   unsigned long minutesLockedOnPress;
 }
 
+namespace selectControllMassVariable{
+  unsigned long controllMassOnPressStart;
+}
 
 //select time to lock
   void setTimeScreen(){
@@ -164,11 +173,78 @@ void calibrateScreen(){
   });
 }
 
+void tareScreen(){
+  display.setText("Tare");
+  selectButton.setOnPress([](){
+    loadCell.tare();
+    currentMenu = Menues::knownMass;
+  });
+  cancelButton.setOnPress([](){
+    currentMenu = Menues::calibrate;
+  });
+
+  upButton.setOnPress([](){
+    //currentMenu = Menues::timeLocker;
+  });
+
+  downButton.setOnPress([](){
+    //currentMenu = Menues::calibrate;
+  });
+}
+
+
+  void enterMassScreen(){
+    String text = "calibration mass:\n" + String(controllMassInGramm) + "\ngramm";
+    display.setText(text);
+    
+    selectButton.setOnPress([](){
+      loadCell.setCalibrationFactor(controllMassInGramm);
+      currentMenu = Menues::calibrate;
+    });
+    cancelButton.setOnPress([](){
+      currentMenu = Menues::tare;
+    });
+
+    downButton.setOnPress([](){
+      if(controllMassInGramm > 1){
+        controllMassInGramm-=1;
+      }
+    });
+
+    downButton.setOnLongPressStart([](){
+      selectControllMassVariable::controllMassOnPressStart = controllMassInGramm;
+      Serial.println("Long press start");
+    });
+    downButton.setOnLongPress([](double onLongPress){
+      controllMassInGramm = selectControllMassVariable::controllMassOnPressStart - onLongPress * 15;
+      if(controllMassInGramm < 1){
+        controllMassInGramm = 1;
+      }
+    });
+
+
+
+  upButton.setOnPress([](){
+    controllMassInGramm+=1;
+  });
+
+      upButton.setOnLongPressStart([](){
+      selectControllMassVariable::controllMassOnPressStart = controllMassInGramm;
+      Serial.println("Long press start");
+
+    });
+    upButton.setOnLongPress([](double onLongPress){
+      controllMassInGramm = selectControllMassVariable::controllMassOnPressStart + onLongPress * 15;
+    });
+    
+  }
+
 void setup(){
     Serial.begin(9600);
     display.begin();
     servoMotor.open();
-    currentMenu = Menues::timeLocker;
+    loadCell.start(500);
+    currentMenu = Menues::opening;
 }
 
 void loop(){
@@ -177,6 +253,7 @@ void loop(){
     cancelButton.update();
     upButton.update();
     downButton.update();
+  Serial.println(loadCell.getData());
 
   switch (currentMenu)
   {
@@ -199,6 +276,12 @@ void loop(){
   case Menues::calibrate:
     calibrateScreen();
   break;
+  case Menues::tare:
+    tareScreen();
+  break;
+  case Menues::knownMass:
+    enterMassScreen();
+  break;
   /*case Menues::calorinLocker:
     calorinLockerScreen();
     break;
@@ -213,18 +296,6 @@ void loop(){
 
   case Menues::calorinsToGo:
     calorinsToGoScreen();
-    break;
-
-  case Menues::calibrate:
-    calibrate();
-    break;
-
-  case Menues::tare:
-    tare();
-    break;
-
-  case Menues::knownMass:
-    knownMass();
     break;
 
   default:
