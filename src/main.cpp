@@ -28,10 +28,10 @@ enum class Menues
   timeLocker,
   selectTime,
   timeLocked,
-  calorinLocker,
-  inputMinCalorinsToOpen,
-  inputFullCalorins,
-  calorinsToGo,
+  caloriesLocker,
+  inputCaloriesToWeightRatio,
+  inputMinCaloriesToOpen,
+  caloriesToGo,
   calibrate,
   tare,
   knownMass
@@ -44,8 +44,12 @@ unsigned long controllMassInGramm = 0;
 class State
 {
 private:
-  float tareFactor;
+  float calibrationFactor;
   long tareOffset;
+
+  float kcalPerOnehundredGramm;
+  float minCaloriesToOpen;
+  float alreadyBurnedCalories;
 
   void save()
   {
@@ -59,36 +63,90 @@ private:
   }
 
 public:
-  void setTareFactor(const float &newTareFactor)
+  void setCalibrationFactor(const float &newCalibrationFactor)
   {
-    tareFactor = newTareFactor;
+    calibrationFactor = newCalibrationFactor;
     save();
   }
 
-  float getTareFacotor()
+  float getCalibrationFacotor()
   {
     readValues();
     // make sure the tare factor is not nan or 0
-    if (!(tareFactor > 0.0))
+    if (!(calibrationFactor > 0.0))
     {
-      tareFactor = 1;
+      calibrationFactor = 1;
     }
 
-    return tareFactor;
+    return calibrationFactor;
   }
 
-  void setTareOffset(const long& newTareOffset){
+  void setTareOffset(const long &newTareOffset)
+  {
     tareOffset = newTareOffset;
     save();
   }
 
-  long getTareOffset(){
+  long getTareOffset()
+  {
     readValues();
 
-    if(!(tareOffset >= 0)){
+    if (!(tareOffset >= 0))
+    {
       tareOffset = 0;
     }
     return tareOffset;
+  }
+
+  void setKcalPerOnehundredGramm(const float &newKcalPerOnehundredGramm)
+  {
+    kcalPerOnehundredGramm = newKcalPerOnehundredGramm;
+    save();
+  }
+
+  float getKcalPerOnehundredGramm()
+  {
+    readValues();
+
+    if (!(kcalPerOnehundredGramm > 0.0))
+    {
+      kcalPerOnehundredGramm = 100.0;
+    }
+    return kcalPerOnehundredGramm;
+  }
+
+  void setMinCaloriesToOpen(const float &newMinCaloriesToOpen)
+  {
+    minCaloriesToOpen = newMinCaloriesToOpen;
+    save();
+  }
+
+  float getMinCaloriesToOpen()
+  {
+    readValues();
+
+    if (!(minCaloriesToOpen > 0.0))
+    {
+      minCaloriesToOpen = 500.0;
+    }
+    return minCaloriesToOpen;
+  }
+
+  void setAlreadyBurnedCalories(const float &newAlreadyBurnedCalories)
+  {
+    alreadyBurnedCalories = newAlreadyBurnedCalories;
+    save();
+  }
+  // TODO: fetch this data from the app
+  float getAlreadyBurnedCalories()
+  {
+    readValues();
+
+    if (!(alreadyBurnedCalories >= 0.0))
+    {
+      alreadyBurnedCalories = 0.0;
+    }
+    return alreadyBurnedCalories;
   }
 } state;
 
@@ -138,7 +196,7 @@ void timeLockerScreen()
                       { currentMenu = Menues::opening; });
 
   downButton.setOnPress([]()
-                        { currentMenu = Menues::calibrate; });
+                        { currentMenu = Menues::caloriesLocker; });
 }
 
 // TODO: make this more beautiful like in a class
@@ -150,6 +208,16 @@ namespace selectTimeVariables
 namespace selectControllMassVariable
 {
   unsigned long controllMassOnPressStart;
+}
+
+namespace selectCalorieWeightRatio
+{
+  float calorieWeightRatioOnPressStart;
+}
+
+namespace selectMinCaloriesToOpen
+{
+  unsigned minCaloriesToOpenOnPressStart;
 }
 
 // select time to lock
@@ -218,6 +286,102 @@ void secondsLockedScreen()
   display.setText(text);
 }
 
+void lockByCaloriesScreen()
+{
+  display.setText("lock by\nCalories");
+  selectButton.setOnPress([]()
+                          { currentMenu = Menues::inputCaloriesToWeightRatio; });
+
+  upButton.setOnPress([]()
+                      { currentMenu = Menues::timeLocker; });
+
+  downButton.setOnPress([]()
+                        { currentMenu = Menues::calibrate; });
+}
+
+void inputCaloriesToWeightRatioScreen()
+{
+  String text = "Calories per 100g:\n" + String(state.getKcalPerOnehundredGramm());
+  display.setText(text);
+
+    selectButton.setOnPress([]() {
+      currentMenu = Menues::inputMinCaloriesToOpen;
+    });
+  cancelButton.setOnPress([]()
+                          { currentMenu = Menues::caloriesLocker; });
+
+  downButton.setOnPress([]()
+                        {
+      if(state.getKcalPerOnehundredGramm() > 1){
+        state.setKcalPerOnehundredGramm(state.getKcalPerOnehundredGramm() - 1);
+      } });
+
+  downButton.setOnLongPressStart([]()
+                                 { selectCalorieWeightRatio::calorieWeightRatioOnPressStart = state.getKcalPerOnehundredGramm(); });
+  downButton.setOnLongPress([](double onLongPress)
+                            {
+      state.setKcalPerOnehundredGramm(selectCalorieWeightRatio::calorieWeightRatioOnPressStart - onLongPress * 15);
+      if(state.getKcalPerOnehundredGramm() < 1){
+        state.setKcalPerOnehundredGramm(1);
+      } });
+
+  upButton.setOnPress([]()
+                      { state.setKcalPerOnehundredGramm(state.getKcalPerOnehundredGramm() + 1); });
+
+  upButton.setOnLongPressStart([]()
+                               { selectCalorieWeightRatio::calorieWeightRatioOnPressStart = state.getKcalPerOnehundredGramm(); });
+  upButton.setOnLongPress([](double onLongPress)
+                          { state.setKcalPerOnehundredGramm(selectCalorieWeightRatio::calorieWeightRatioOnPressStart + onLongPress * 15); });
+}
+
+void inputCaloriesToOpenScreen()
+{
+  String text = "min Calories to open" + String(state.getMinCaloriesToOpen());
+  display.setText(text);
+  selectButton.setOnPress([]() {
+currentMenu = Menues::caloriesToGo;
+  });
+
+  cancelButton.setOnPress([]()
+                          { currentMenu = Menues::inputCaloriesToWeightRatio; });
+
+  downButton.setOnPress([]()
+                        {
+      if(state.getMinCaloriesToOpen() > 1){
+        state.setMinCaloriesToOpen(state.getMinCaloriesToOpen() - 1);
+      } });
+  downButton.setOnLongPressStart([]()
+                                 { selectMinCaloriesToOpen::minCaloriesToOpenOnPressStart = state.getMinCaloriesToOpen(); });
+  downButton.setOnLongPress([](double onLongPress)
+                            {
+      state.setMinCaloriesToOpen(selectMinCaloriesToOpen::minCaloriesToOpenOnPressStart - onLongPress * 15);
+      if(state.getMinCaloriesToOpen() < 1){
+        state.setMinCaloriesToOpen(1);
+      } });
+  upButton.setOnPress([]()
+                      { state.setMinCaloriesToOpen(state.getMinCaloriesToOpen() + 1); });
+  upButton.setOnLongPressStart([]()
+                               { selectMinCaloriesToOpen::minCaloriesToOpenOnPressStart = state.getMinCaloriesToOpen(); });
+  upButton.setOnLongPress([](double onLongPress)
+                          { state.setMinCaloriesToOpen(selectMinCaloriesToOpen::minCaloriesToOpenOnPressStart + onLongPress * 15); });
+}
+
+void caloriesToGoScreen()
+{
+  float currentWeight = loadCell.getData();
+  float currentCalories = (currentWeight / 100.0) * state.getKcalPerOnehundredGramm();
+  //float caloriesToGo = state.getMinCaloriesToOpen() - (state.getAlreadyBurnedCalories() + currentCalories);
+  //TODO: make this interactive according to the burned calories from the app
+  String text = "calories to go:\n" + String(currentCalories);
+  display.setText(text);
+
+  selectButton.setOnPress([]()
+                          {});
+                          //TODO: remove this function since the screen should disappear when the calories goal is reached
+  cancelButton.setOnPress([]()
+                          { currentMenu = Menues::caloriesLocker; });
+}
+
 void calibrateScreen()
 {
   display.setText("Calibrate Weight");
@@ -225,7 +389,7 @@ void calibrateScreen()
                           { currentMenu = Menues::tare; });
 
   upButton.setOnPress([]()
-                      { currentMenu = Menues::timeLocker; });
+                      { currentMenu = Menues::caloriesLocker; });
 
   downButton.setOnPress([]()
                         {
@@ -263,7 +427,7 @@ void enterMassScreen()
   selectButton.setOnPress([]()
                           {
       loadCell.calibrateWithKnowMass(controllMassInGramm);
-      state.setTareFactor(loadCell.getCalFactor());
+      state.setCalibrationFactor(loadCell.getCalFactor());
       currentMenu = Menues::calibrate; });
   cancelButton.setOnPress([]()
                           { currentMenu = Menues::tare; });
@@ -303,9 +467,9 @@ void setup()
   EEPROM.begin(512);
   display.begin();
   servoMotor.open();
-  loadCell.start(500,false);
+  loadCell.start(500, false);
   loadCell.setTareOffset(state.getTareOffset());
-  loadCell.setCalFactor(state.getTareFacotor());
+  loadCell.setCalFactor(state.getCalibrationFacotor());
   currentMenu = Menues::opening;
 }
 
@@ -316,7 +480,7 @@ void loop()
   cancelButton.update();
   upButton.update();
   downButton.update();
-  //Serial.println(loadCell.getData());
+  // Serial.println(loadCell.getData());
 
   switch (currentMenu)
   {
@@ -345,23 +509,23 @@ void loop()
   case Menues::knownMass:
     enterMassScreen();
     break;
-    /*case Menues::calorinLocker:
-      calorinLockerScreen();
+  case Menues::caloriesLocker:
+    lockByCaloriesScreen();
+    break;
+
+  case Menues::inputCaloriesToWeightRatio:
+    inputCaloriesToWeightRatioScreen();
+    break;
+
+    case Menues::inputMinCaloriesToOpen:
+      inputCaloriesToOpenScreen();
       break;
 
-    case Menues::inputMinCalorinsToOpen:
-      inputMinCalorinsToOpenScreen();
+    case Menues::caloriesToGo:
+      caloriesToGoScreen();
       break;
 
-    case Menues::inputFullCalorins:
-      inputFullCalorinsScreen();
-      break;
-
-    case Menues::calorinsToGo:
-      calorinsToGoScreen();
-      break;
-
-    default:
+    /*default:
       break;*/
   }
 }
