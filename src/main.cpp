@@ -2,12 +2,17 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEServer.h>
+
 #include "Buzzer.h"
 #include "Display.h"
 #include "Button.h"
 #include "openingMechanism.h"
 #include "ServoMotor.h"
 #include "loadCell.h"
+
 
 // Komponents
 Buzzer buzzer(5);
@@ -22,6 +27,10 @@ Button upButton(25, []() {}, [](double timeSincePress) {});
 
 Button downButton(16, []() {}, [](double timeSincePress) {});
 
+const std::string SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+const std::string CURRENT_CALORIES_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+
+BLECharacteristic *pCurrentCalories = nullptr;
 enum class Menues
 {
   opening,
@@ -49,7 +58,7 @@ private:
 
   float kcalPerOnehundredGramm;
   float minCaloriesToOpen;
-  float alreadyBurnedCalories;
+  float caloriesOnStart;
 
   void save()
   {
@@ -132,23 +141,36 @@ public:
     return minCaloriesToOpen;
   }
 
-  void setAlreadyBurnedCalories(const float &newAlreadyBurnedCalories)
+  void setCaloriesOnStart(const float &newCaloriesOnStart)
   {
-    alreadyBurnedCalories = newAlreadyBurnedCalories;
+    caloriesOnStart = newCaloriesOnStart;
     save();
   }
   // TODO: fetch this data from the app
-  float getAlreadyBurnedCalories()
+  float getCaloriesOnStart()
   {
     readValues();
 
-    if (!(alreadyBurnedCalories >= 0.0))
+    if (!(caloriesOnStart >= 0.0))
     {
-      alreadyBurnedCalories = 0.0;
+      caloriesOnStart = 0.0;
     }
-    return alreadyBurnedCalories;
+    return caloriesOnStart;
   }
+
+
 } state;
+
+float getCurrentBurnedCalories(){
+    std::string data = pCurrentCalories->getValue().c_str();
+  float dataAsFloat = 0.0f;
+  try{
+    dataAsFloat = std::stof(data);
+  }catch(...){
+    dataAsFloat = 0.0f;
+  }
+  return dataAsFloat;
+}
 
 // screens
 
@@ -339,6 +361,7 @@ void inputCaloriesToOpenScreen()
   String text = "min Calories to open" + String(state.getMinCaloriesToOpen());
   display.setText(text);
   selectButton.setOnPress([]() {
+    state.setCaloriesOnStart(getCurrentBurnedCalories());
 currentMenu = Menues::caloriesToGo;
   });
 
@@ -369,9 +392,7 @@ currentMenu = Menues::caloriesToGo;
 void caloriesToGoScreen()
 {
   float currentWeight = loadCell.getData();
-  float currentCalories = (currentWeight / 100.0) * state.getKcalPerOnehundredGramm();
-  //float caloriesToGo = state.getMinCaloriesToOpen() - (state.getAlreadyBurnedCalories() + currentCalories);
-  //TODO: make this interactive according to the burned calories from the app
+  float currentCalories = (currentWeight / 100.0) * state.getKcalPerOnehundredGramm() - (getCurrentBurnedCalories() - state.getCaloriesOnStart());
   String text = "calories to go:\n" + String(currentCalories);
   display.setText(text);
 
@@ -471,10 +492,32 @@ void setup()
   loadCell.setTareOffset(state.getTareOffset());
   loadCell.setCalFactor(state.getCalibrationFacotor());
   currentMenu = Menues::opening;
+
+  //init bluetooth
+  BLEDevice::init("smart locker");
+  BLEServer *pServer = BLEDevice::createServer();
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+
+  pCurrentCalories = pService->createCharacteristic(
+                                         CURRENT_CALORIES_UUID,
+                                         BLECharacteristic::PROPERTY_READ |
+                                         BLECharacteristic::PROPERTY_WRITE
+                                       );
+  pCurrentCalories->setValue("1.0");
+  pService->start();
+  // BLEAdvertising *pAdvertising = pServer->getAdvertising();  // this still is working for backward compatibility
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06);  // functions that help with iPhone connections issue
+  pAdvertising->setMinPreferred(0x12);
+  BLEDevice::startAdvertising();
+  Serial.println("Characteristic defined! Now you can read it in your phone!");
 }
 
 void loop()
 {
+  Serial.println(getCurrentBurnedCalories());
   // update parts
   selectButton.update();
   cancelButton.update();
