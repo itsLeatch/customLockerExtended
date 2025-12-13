@@ -13,7 +13,6 @@
 #include "ServoMotor.h"
 #include "loadCell.h"
 
-
 // Komponents
 Buzzer buzzer(5);
 Display display(128, 64, -1);
@@ -29,8 +28,11 @@ Button downButton(16, []() {}, [](double timeSincePress) {});
 
 const std::string SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
 const std::string CURRENT_CALORIES_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+const std::string MIN_CALORIES_TO_OPEN_UUID = "33aedfe5-62a7-4f57-aad2-00d409fcd44c";
 
 BLECharacteristic *pCurrentCalories = nullptr;
+BLECharacteristic *pMinCaloriesToOpen = nullptr;
+
 enum class Menues
 {
   opening,
@@ -41,6 +43,7 @@ enum class Menues
   inputCaloriesToWeightRatio,
   inputMinCaloriesToOpen,
   caloriesToGo,
+  takeOutRewardingSweets,
   calibrate,
   tare,
   knownMass
@@ -59,6 +62,7 @@ private:
   float kcalPerOnehundredGramm;
   float minCaloriesToOpen;
   float caloriesOnStart;
+  float weightOnClose;
 
   void save()
   {
@@ -127,6 +131,8 @@ public:
   void setMinCaloriesToOpen(const float &newMinCaloriesToOpen)
   {
     minCaloriesToOpen = newMinCaloriesToOpen;
+    // update the characteristic
+    pMinCaloriesToOpen->setValue(String(minCaloriesToOpen).c_str());
     save();
   }
 
@@ -158,15 +164,30 @@ public:
     return caloriesOnStart;
   }
 
+  void setWeightOnClose(const float &newWeightOnClose)
+  {
+    weightOnClose = newWeightOnClose;
+    save();
+  }
+
+  float getWeightOnClose()
+  {
+    readValues();
+    return weightOnClose;
+  }
 
 } state;
 
-float getCurrentBurnedCalories(){
-    std::string data = pCurrentCalories->getValue().c_str();
+float getBurnedCalories()
+{
+  std::string data = pCurrentCalories->getValue().c_str();
   float dataAsFloat = 0.0f;
-  try{
+  try
+  {
     dataAsFloat = std::stof(data);
-  }catch(...){
+  }
+  catch (...)
+  {
     dataAsFloat = 0.0f;
   }
   return dataAsFloat;
@@ -326,9 +347,8 @@ void inputCaloriesToWeightRatioScreen()
   String text = "Calories per 100g:\n" + String(state.getKcalPerOnehundredGramm());
   display.setText(text);
 
-    selectButton.setOnPress([]() {
-      currentMenu = Menues::inputMinCaloriesToOpen;
-    });
+  selectButton.setOnPress([]()
+                          { currentMenu = Menues::inputMinCaloriesToOpen; });
   cancelButton.setOnPress([]()
                           { currentMenu = Menues::caloriesLocker; });
 
@@ -360,10 +380,13 @@ void inputCaloriesToOpenScreen()
 {
   String text = "min Calories to open" + String(state.getMinCaloriesToOpen());
   display.setText(text);
-  selectButton.setOnPress([]() {
-    state.setCaloriesOnStart(getCurrentBurnedCalories());
-currentMenu = Menues::caloriesToGo;
-  });
+  selectButton.setOnPress([]()
+                          {
+    state.setCaloriesOnStart(getBurnedCalories());
+    state.setWeightOnClose(loadCell.getData());
+    buzzer.playNotificationSound();
+      servoMotor.close();
+currentMenu = Menues::caloriesToGo; });
 
   cancelButton.setOnPress([]()
                           { currentMenu = Menues::inputCaloriesToWeightRatio; });
@@ -391,16 +414,52 @@ currentMenu = Menues::caloriesToGo;
 
 void caloriesToGoScreen()
 {
-  float currentWeight = loadCell.getData();
-  float currentCalories = (currentWeight / 100.0) * state.getKcalPerOnehundredGramm() - (getCurrentBurnedCalories() - state.getCaloriesOnStart());
+  float currentCalories = state.getMinCaloriesToOpen() - (getBurnedCalories() - state.getCaloriesOnStart());
   String text = "calories to go:\n" + String(currentCalories);
   display.setText(text);
 
-  selectButton.setOnPress([]()
-                          {});
-                          //TODO: remove this function since the screen should disappear when the calories goal is reached
+  if (currentCalories <= 0)
+  {
+    servoMotor.open();
+    buzzer.playRewardSound();
+    currentMenu = Menues::takeOutRewardingSweets;
+    state.setWeightOnClose(loadCell.getData()); // TODO: removve this because it is twice
+  }
+
+  selectButton.setOnPress([]() {});
+  // TODO: remove this function since the screen should disappear when the calories goal is reached
   cancelButton.setOnPress([]()
                           { currentMenu = Menues::caloriesLocker; });
+}
+
+void takeOutRewardingSweets()
+{
+  float currentWeight = loadCell.getData();
+  float earnedLeft = (getBurnedCalories() /*- state.getCaloriesOnStart()*/) - ((state.getWeightOnClose() - currentWeight) / 100 * state.getKcalPerOnehundredGramm());
+
+  String text = "Left KCal:\n" + String(earnedLeft);
+  display.setText(text);
+  Serial.println("burned: " + String(getBurnedCalories()));
+  Serial.println("Ratio: " + String(((state.getWeightOnClose() - currentWeight) / 100 * state.getKcalPerOnehundredGramm())));
+  Serial.println("onclose: " + String(state.getWeightOnClose()));
+  if (earnedLeft <= 0)
+  {
+    buzzer.playError();
+  }
+  if (earnedLeft > 0)
+  {
+
+    selectButton.setOnPress([]()
+                            { currentMenu = Menues::inputCaloriesToWeightRatio; });
+
+    cancelButton.setOnPress([]()
+                            { currentMenu = Menues::caloriesLocker; });
+  }
+  else
+  {
+    selectButton.setOnPress([]() {});
+    cancelButton.setOnPress([]() {});
+  }
 }
 
 void calibrateScreen()
@@ -481,6 +540,7 @@ void enterMassScreen()
                           { controllMassInGramm = selectControllMassVariable::controllMassOnPressStart + onLongPress * 15; });
 }
 
+BLEServer *pServer = nullptr;
 void setup()
 {
   Serial.begin(9600);
@@ -493,23 +553,29 @@ void setup()
   loadCell.setCalFactor(state.getCalibrationFacotor());
   currentMenu = Menues::opening;
 
-  //init bluetooth
+  // init bluetooth
   BLEDevice::init("smart locker");
-  BLEServer *pServer = BLEDevice::createServer();
+  pServer = BLEDevice::createServer();
   BLEService *pService = pServer->createService(SERVICE_UUID);
-
+  // current Calories
   pCurrentCalories = pService->createCharacteristic(
-                                         CURRENT_CALORIES_UUID,
-                                         BLECharacteristic::PROPERTY_READ |
-                                         BLECharacteristic::PROPERTY_WRITE
-                                       );
+      CURRENT_CALORIES_UUID,
+      BLECharacteristic::PROPERTY_READ |
+          BLECharacteristic::PROPERTY_WRITE);
   pCurrentCalories->setValue("1.0");
+  // min calories to open
+  // TODO: notice, that there should be also write functionality in the future
+  pMinCaloriesToOpen = pService->createCharacteristic(
+      MIN_CALORIES_TO_OPEN_UUID,
+      BLECharacteristic::PROPERTY_READ);
+  pMinCaloriesToOpen->setValue(String(state.getMinCaloriesToOpen()).c_str());
+
   pService->start();
   // BLEAdvertising *pAdvertising = pServer->getAdvertising();  // this still is working for backward compatibility
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
   pAdvertising->setScanResponse(true);
-  pAdvertising->setMinPreferred(0x06);  // functions that help with iPhone connections issue
+  pAdvertising->setMinPreferred(0x06); // functions that help with iPhone connections issue
   pAdvertising->setMinPreferred(0x12);
   BLEDevice::startAdvertising();
   Serial.println("Characteristic defined! Now you can read it in your phone!");
@@ -517,13 +583,22 @@ void setup()
 
 void loop()
 {
-  Serial.println(getCurrentBurnedCalories());
+  // check if bloetooth is connected othervise start advertising again
+  if (pServer->getConnectedCount() == 0)
+  {
+  /*BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06); // functions that help with iPhone connections issue
+  pAdvertising->setMinPreferred(0x12);*/
+  BLEDevice::startAdvertising();
+  }
+
   // update parts
   selectButton.update();
   cancelButton.update();
   upButton.update();
   downButton.update();
-  // Serial.println(loadCell.getData());
 
   switch (currentMenu)
   {
@@ -560,13 +635,16 @@ void loop()
     inputCaloriesToWeightRatioScreen();
     break;
 
-    case Menues::inputMinCaloriesToOpen:
-      inputCaloriesToOpenScreen();
-      break;
+  case Menues::inputMinCaloriesToOpen:
+    inputCaloriesToOpenScreen();
+    break;
 
-    case Menues::caloriesToGo:
-      caloriesToGoScreen();
-      break;
+  case Menues::caloriesToGo:
+    caloriesToGoScreen();
+    break;
+  case Menues::takeOutRewardingSweets:
+    takeOutRewardingSweets();
+    break;
 
     /*default:
       break;*/
