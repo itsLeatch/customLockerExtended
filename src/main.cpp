@@ -581,16 +581,31 @@ void setup()
   Serial.println("Characteristic defined! Now you can read it in your phone!");
 }
 
+// clears all button bindings to prevent button functions from previous screens interfering with the current screen
+void clearButtonBindings()
+{
+  selectButton.setOnPress([]() {});
+  selectButton.setOnLongPressStart([]() {});
+  selectButton.setOnLongPress([](double timeSincePress) {});
+
+  cancelButton.setOnPress([]() {});
+  cancelButton.setOnLongPressStart([]() {});
+  cancelButton.setOnLongPress([](double timeSincePress) {});
+
+  upButton.setOnPress([]() {});
+  upButton.setOnLongPressStart([]() {});
+  upButton.setOnLongPress([](double timeSincePress) {});
+
+  downButton.setOnPress([]() {});
+  downButton.setOnLongPressStart([]() {});
+  downButton.setOnLongPress([](double timeSincePress) {});
+}
+
 void loop()
 {
   // check if bloetooth is connected othervise start advertising again
   if (pServer->getConnectedCount() == 0)
   {
-  /*BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(SERVICE_UUID);
-  pAdvertising->setScanResponse(true);
-  pAdvertising->setMinPreferred(0x06); // functions that help with iPhone connections issue
-  pAdvertising->setMinPreferred(0x12);*/
   BLEDevice::startAdvertising();
   }
 
@@ -599,6 +614,9 @@ void loop()
   cancelButton.update();
   upButton.update();
   downButton.update();
+
+  // clear all button bindings to prevent interference between screens
+  clearButtonBindings();
 
   switch (currentMenu)
   {
