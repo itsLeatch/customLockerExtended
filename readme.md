@@ -5,3 +5,5 @@ To use the android app, please visit the following link: [Box Master](https://gi
 - lock the box for a defined time period
 - tare the weight sensor with known mass
 - Lock the box until the desired number of calories has been burned. Afterwards, the internal weight sensor measures how much weight has been removed. The box then automatically calculates the equivalent amount of calories. If more calories are taken out than burned, the box will play a notification sound.
+
+https://github.com/user-attachments/assets/28022000-88c3-4b23-8f9c-2944c17416d4
