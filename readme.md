@@ -1,5 +1,5 @@
 # Custom Locker Extended
-This is an extended version of the Custom Locker project for Arduino-based locker systems. Since the google fit API is going to be deprecated, this version removes the dependency on it. The new versions uses google Health Connect. Therefore an app connection via bluetooth is required to sync data. Additionally, some new features and improvements have been added.
+This is an extended version of the [CustomLocker](https://github.com/itsLeatch/customLocker.git). Since the google fit API is going to be deprecated, this version removes the dependency on it. The new versions uses google Health Connect. Therefore an app connection via bluetooth is required to sync data. Additionally, some new features and improvements have been added.
 To use the android app, please visit the following link: [Box Master](https://github.com/itsLeatch/box_master)
 ## Features
 - lock the box for a defined time period
